@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>JJK: Cursed Technique - Video Edition</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Courier New', sans-serif; }
+    
+        #ui {
+            position: absolute;
+            top: 5%;
+            width: 100%;
+            text-align: center;
+            color: #fff;
+            pointer-events: none;
+            z-index: 10;
+        }
+        
+        h1 { 
+            font-size: 3rem; margin: 0; letter-spacing: 10px; 
+            font-weight: 900; 
+            text-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
+            background: linear-gradient(to bottom, #fff, #888);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        #technique-name { 
+            font-size: 1.5rem; color: #00ffff; margin-top: 15px; 
+            font-weight: bold; letter-spacing: 4px;
+            text-transform: uppercase;
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+            transition: all 0.3s ease;
+        }
+
+        #start-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: #fff;
+            cursor: pointer;
+            transition: opacity 0.5s ease;
+        }
+
+        #start-overlay h2 {
+            font-size: 2rem;
+            letter-spacing: 5px;
+            color: #00ffff;
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.8);
+            margin-bottom: 10px;
+        }
+
+        #start-overlay p {
+            color: #888;
+            font-size: 1rem;
+        }
+        
+        #video-container {
+            position: absolute;
+            bottom: 2%;
+            left: 18%;
+            transform: translateX(-50%) scaleX(-1);
+            width: 85vw;
+            max-width: 450px;
+            height: 42vh; 
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            z-index: 20;
+            background-color: #000; 
+            border-radius: 25px;
+            overflow: hidden;
+            box-shadow: 0 0 40px rgba(0,0,0,0.9);
+        }
+
+        video.input_video { width: 100%; height: 100%; object-fit: cover; opacity: 0.8; }
+        #output_canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+
+        /* Fullscreen Video Overlay Styles - Centered and Blend-Masked */
+        .effect-overlay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 90vw;
+            height: 90vh;
+            object-fit: contain;
+            mix-blend-mode: screen; /* Blends out black background */
+            pointer-events: none;
+            z-index: 8;
+            opacity: 0;
+            transition: opacity 0.4s ease-in-out;
+            
+            /* Radial mask to smoothly fade edges and prevent boxy borders */
+            mask-image: radial-gradient(circle, rgba(0,0,0,1) 45%, rgba(0,0,0,0) 80%);
+            -webkit-mask-image: radial-gradient(circle, rgba(0,0,0,1) 45%, rgba(0,0,0,0) 80%);
+        }
+
+        .effect-overlay.active {
+            opacity: 1;
+        }
+
+        #grain {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 5;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.08'/%3E%3C/svg%3E");
+        }
+    </style>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+</head>
+<body>
+
+    <div id="grain"></div>
+
+    <div id="start-overlay" onclick="startApp()">
+        <h2>UNLEASH CURSED ENERGY</h2>
+        <p>Click anywhere to start camera & audio</p>
+    </div>
+
+    <div id="ui">
+        <h1>呪術廻戦</h1>
+        <div id="technique-name">CURSED ENERGY</div>
+    </div>
+
+    <!-- Video Overlays (unmuted for audio support) -->
+    <video id="video-red" class="effect-overlay" loop playsinline src="videos/red.mp4"></video>
+    <video id="video-purple" class="effect-overlay" loop playsinline src="videos/purple.mp4"></video>
+    <video id="video-void" class="effect-overlay" loop playsinline src="videos/void.mp4"></video>
+    <video id="video-shrine" class="effect-overlay" loop playsinline src="videos/shrine.mp4"></video>
+
+    <div id="video-container">
+        <video class="input_video"></video>
+        <canvas id="output_canvas"></canvas>
+    </div>
+
+<script>
+    let currentTech = 'neutral';
+    const videoElement = document.querySelector('.input_video');
+    const canvasElement = document.getElementById('output_canvas');
+    const canvasCtx = canvasElement.getContext('2d');
+    let glowColor = '#00ffff';
+    let audioInitialized = false;
+
+    // Video Elements Map
+    const overlays = {
+        'red': document.getElementById('video-red'),
+        'purple': document.getElementById('video-purple'),
+        'void': document.getElementById('video-void'),
+        'shrine': document.getElementById('video-shrine')
+    };
+
+    function startApp() {
+        document.getElementById('start-overlay').style.opacity = 0;
+        setTimeout(() => {
+            document.getElementById('start-overlay').style.display = 'none';
+        }, 500);
+
+        audioInitialized = true;
+        
+        // Mute initially and immediately unmute/play on gesture to comply with browser audio policies
+        Object.keys(overlays).forEach(key => {
+            overlays[key].muted = false;
+            overlays[key].volume = 1.0;
+        });
+
+        cameraUtils.start();
+    }
+
+    const HAND_CONNECTIONS = [
+        [0, 1], [1, 2], [2, 3], [3, 4], // Thumb
+        [0, 5], [5, 6], [6, 7], [7, 8], // Index
+        [5, 9], [9, 10], [10, 11], [11, 12], // Middle
+        [9, 13], [13, 14], [14, 15], [15, 16], // Ring
+        [13, 17], [17, 18], [18, 19], [19, 20], // Pinky
+        [0, 17] // Palm Base
+    ];
+
+    const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+    hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.7 });
+
+    hands.onResults((results) => {
+        canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+        let detected = 'neutral';
+        let handDataList = [];
+
+        if (results.multiHandLandmarks && results.multiHandedness) {
+            results.multiHandLandmarks.forEach((lm, idx) => {
+                drawConnectors(canvasCtx, lm, HAND_CONNECTIONS, {color: glowColor, lineWidth: 5});
+                drawLandmarks(canvasCtx, lm, {color: '#fff', lineWidth: 1, radius: 2});
+                const label = results.multiHandedness[idx].label;
+                handDataList.push({ lm, label });
+            });
+
+            handDataList.forEach(({ lm }) => {
+                const isUp = (t, p) => lm[t].y < lm[p].y;
+                const pinch = Math.hypot(lm[8].x - lm[4].x, lm[8].y - lm[4].y);
+                if (pinch < 0.04) detected = 'purple';
+                else if (detected === 'neutral' && isUp(8,6) && !isUp(12,10)) detected = 'red';
+            });
+
+            // Void: RIGHT hand — index + middle crossed, ring + pinky down
+            const rightHand = handDataList.find(h => h.label === 'Left');
+            if (rightHand && detected === 'neutral') {
+                const lm = rightHand.lm;
+                const isUp = (t, p) => lm[t].y < lm[p].y;
+                const crossDist = Math.hypot(lm[8].x - lm[12].x, lm[8].y - lm[12].y);
+                if (crossDist < 0.06 && isUp(8,6) && isUp(12,10) && !isUp(16,14) && !isUp(20,18)) detected = 'void';
+            }
+
+            // Shrine: RIGHT hand open palm — all fingers + thumb up
+            if (detected === 'neutral') {
+                const rightHand2 = handDataList.find(h => h.label === 'Left');
+                if (rightHand2) {
+                    const lm = rightHand2.lm;
+                    const isUp = (t, p) => lm[t].y < lm[p].y;
+                    if (isUp(8,6) && isUp(12,10) && isUp(16,14) && isUp(20,18) && lm[4].x < lm[3].x) detected = 'shrine';
+                }
+            }
+        }
+        updateState(detected);
+    });
+
+    function updateState(tech) {
+        if(currentTech === tech) return;
+        
+        // Handle transitions for previous video
+        if (currentTech !== 'neutral' && overlays[currentTech]) {
+            const prevVid = overlays[currentTech];
+            prevVid.classList.remove('active');
+            setTimeout(() => {
+                if (currentTech !== tech) {
+                    prevVid.pause();
+                    prevVid.currentTime = 0;
+                }
+            }, 400);
+        }
+
+        currentTech = tech;
+        const nameEl = document.getElementById('technique-name');
+
+        if(tech === 'shrine') { 
+            glowColor = '#ff2200'; 
+            nameEl.innerText = "Domain Expansion: Malevolent Shrine"; 
+            nameEl.style.color = '#ff2200';
+            nameEl.style.textShadow = '0 0 15px rgba(255, 34, 0, 0.8)';
+        }
+        else if(tech === 'purple') { 
+            glowColor = '#cc00ff'; 
+            nameEl.innerText = "Secret Technique: Hollow Purple"; 
+            nameEl.style.color = '#cc00ff';
+            nameEl.style.textShadow = '0 0 15px rgba(204, 0, 255, 0.8)';
+        }
+        else if(tech === 'void') { 
+            glowColor = '#00ccff'; 
+            nameEl.innerText = "Domain Expansion: Infinite Void"; 
+            nameEl.style.color = '#00ccff';
+            nameEl.style.textShadow = '0 0 15px rgba(0, 204, 255, 0.8)';
+        }
+        else if(tech === 'red') { 
+            glowColor = '#ff3333'; 
+            nameEl.innerText = "Reverse Cursed Technique: Red"; 
+            nameEl.style.color = '#ff3333';
+            nameEl.style.textShadow = '0 0 15px rgba(255, 51, 51, 0.8)';
+        }
+        else { 
+            glowColor = '#00ffff'; 
+            nameEl.innerText = "Cursed Energy"; 
+            nameEl.style.color = '#00ffff';
+            nameEl.style.textShadow = '0 0 10px rgba(0, 255, 255, 0.5)';
+        }
+
+        // Handle transitions for new active video
+        if (tech !== 'neutral' && overlays[tech] && audioInitialized) {
+            const nextVid = overlays[tech];
+            nextVid.play().catch(err => console.log("Video play interrupted or needs interaction: ", err));
+            nextVid.classList.add('active');
+        }
+    }
+
+    const cameraUtils = new Camera(videoElement, {
+        onFrame: async () => {
+            canvasElement.width = videoElement.videoWidth;
+            canvasElement.height = videoElement.videoHeight;
+            await hands.send({image: videoElement});
+        }, width: 640, height: 480
+    });
+</script>
+</body>
+</html>
